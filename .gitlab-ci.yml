@@ -1,0 +1,55 @@
+image: docker:19.03.12
+
+stages:
+  - build image
+  - build project
+  - push to github
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  JOMIGU_NODE_IMAGE: tsiminiya/chinolatino-dashboard-website-builder:${CI_COMMIT_REF_NAME}
+  BACKUP_JOMIGU_NODE_IMAGE: tsiminiya/chinolatino-dashboard-website-builder:${CI_COMMIT_REF_NAME}
+  JOMIGU_WEBSITE_REPO: https://tsiminiya:${GITHUB_ACCESS_TOKEN}@github.com/jomigu/chinolatino-dashboard.git
+  ORDER_FORM_URL: https://script.google.com/macros/s/AKfycbxwJhbzpdCGbjePaBguvEITrAN_tFK3ob5XzK6BfAzf6UEwwi080crqrc-570szkhU7/exec
+  CLIENT_ID: 18495362772-0jm1jhpk2ja9elt2hijudvf1ibpaeega.apps.googleusercontent.com
+  APPSCRIPT_CODE_VERSION: vBeta1.5
+
+services:
+  - docker:19.03.12-dind
+
+build:image:
+  stage: build image
+  image: docker:dind
+  before_script:
+    - docker login -u tsiminiya -p $DOCKER_ACCESS_TOKEN
+  script:
+    - docker build ${PWD} -t tsiminiya/chinolatino-dashboard-website-builder:${CI_COMMIT_REF_NAME}
+    - docker push ${BACKUP_JOMIGU_NODE_IMAGE}
+    - docker tag ${BACKUP_JOMIGU_NODE_IMAGE} ${JOMIGU_NODE_IMAGE}
+    - docker push ${JOMIGU_NODE_IMAGE}
+  except:
+    variables:
+      - $CONTENT_UPDATE == "1"
+  only:
+    changes:
+      - Dockerfile
+
+build:project:
+  stage: build project
+  image: ${JOMIGU_NODE_IMAGE}
+  script:
+    - git remote set-url origin ${JOMIGU_WEBSITE_REPO}
+    - npm install
+    - npm run build
+    - git stash
+    - git config --global user.email "${GIT_CONFIG_EMAIL}"
+    - git config --global user.name "${GIT_CONFIG_NAME}"
+    - npm run deploy
+  artifacts:
+    paths:
+      - dist
+    expire_in: 30 days
+  only:
+    refs:
+      - main
